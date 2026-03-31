@@ -34,3 +34,15 @@ The config is auto-generated on first run. Key settings:
 | `vote_rounds_before_end` | Rounds before match end to trigger a vote | `3` |
 | `empty_map_rotation_cooldown` | Seconds before rotating maps on empty server | `120` |
 | `maps` | Array of map entries with `name`, `workshop_id`, `min_players`, `max_players`, `weight` | - |
+
+## Support
+
+If you find a bug, have a feature request, or something isn't working as expected, feel free to [open an issue](../../issues). I'll take a look when I can.
+
+Custom plugins are available on request, potentially for a small fee depending on scope. Reach out via an issue or at access@shaedy.de.
+
+> Note: These repos may not always be super active since most of my work happens in private repositories. But issues and requests are still welcome.
+
+## Donate
+
+If you want to support my work: [ko-fi.com/shaedy](https://ko-fi.com/shaedy)
