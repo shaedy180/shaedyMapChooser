@@ -7,56 +7,35 @@ using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.Menu;
 using CounterStrikeSharp.API.Modules.Timers;
 using CounterStrikeSharp.API.Modules.Utils;
+using ShaedyHudManager;
 using System.Text.Json.Serialization;
 
 namespace ShaedyMapChooser;
 
 public class MapInfo
 {
-    [JsonPropertyName("ws")]
-    public bool IsWorkshop { get; set; } = false;
-
-    [JsonPropertyName("display")]
-    public string? DisplayName { get; set; }
-
-    [JsonPropertyName("mapid")]
-    public string? WorkshopId { get; set; }
-
-    [JsonPropertyName("minplayers")]
-    public int MinPlayers { get; set; } = 0;
-
-    [JsonPropertyName("maxplayers")]
-    public int MaxPlayers { get; set; } = 64;
-
-    [JsonPropertyName("weight")]
-    public int Weight { get; set; } = 1;
+    [JsonPropertyName("ws")] public bool IsWorkshop { get; set; } = false;
+    [JsonPropertyName("display")] public string? DisplayName { get; set; }
+    [JsonPropertyName("mapid")] public string? WorkshopId { get; set; }
+    [JsonPropertyName("minplayers")] public int MinPlayers { get; set; } = 0;
+    [JsonPropertyName("maxplayers")] public int MaxPlayers { get; set; } = 64;
+    [JsonPropertyName("weight")] public int Weight { get; set; } = 1;
 }
 
 public class ShaedyConfig : BasePluginConfig
 {
-    [JsonPropertyName("RtvPercentage")]
-    public float RtvPercentage { get; set; } = 0.6f;
-
-    [JsonPropertyName("VoteDuration")]
-    public int VoteDuration { get; set; } = 25;
-
-    [JsonPropertyName("VoteRoundsBeforeEnd")]
-    public int VoteRoundsBeforeEnd { get; set; } = 2;
-
-    [JsonPropertyName("EmptyMapRotationCooldown")]
-    public int EmptyMapRotationCooldown { get; set; } = 30; // minutes the server must be empty before rotation
-
-    [JsonPropertyName("Maps")]
-    public Dictionary<string, MapInfo> Maps { get; set; } = new();
-
-    [JsonPropertyName("MapPools")]
-    public Dictionary<string, Dictionary<string, MapInfo>> MapPools { get; set; } = new();
+    [JsonPropertyName("RtvPercentage")] public float RtvPercentage { get; set; } = 0.6f;
+    [JsonPropertyName("VoteDuration")] public int VoteDuration { get; set; } = 25;
+    [JsonPropertyName("VoteRoundsBeforeEnd")] public int VoteRoundsBeforeEnd { get; set; } = 2;
+    [JsonPropertyName("EmptyMapRotationCooldown")] public int EmptyMapRotationCooldown { get; set; } = 30;
+    [JsonPropertyName("Maps")] public Dictionary<string, MapInfo> Maps { get; set; } = new();
+    [JsonPropertyName("MapPools")] public Dictionary<string, Dictionary<string, MapInfo>> MapPools { get; set; } = new();
 }
 
 public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 {
     public override string ModuleName => "shaedy MapChooser";
-    public override string ModuleVersion => "3.3.0";
+    public override string ModuleVersion => "3.5.0";
     public override string ModuleAuthor => "shaedy";
 
     public ShaedyConfig Config { get; set; } = new();
@@ -74,12 +53,15 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
     private Dictionary<int, string> _playerVotes = new();
     private Dictionary<string, int> _currentVotes = new();
 
-    private string _prefix => $"{ChatColors.White}[{ChatColors.Green}shaedy-MapChooser{ChatColors.White}]";
+    private CounterStrikeSharp.API.Modules.Timers.Timer? _nextmapBadgeTimer;
+    private CounterStrikeSharp.API.Modules.Timers.Timer? _rtvBadgeTimer;
+
+    private string _prefix => string.Concat(ChatColors.White, "[", ChatColors.Green, "shaedy-MapChooser", ChatColors.White, "]");
 
     public void OnConfigParsed(ShaedyConfig config)
     {
         Config = config;
-        Console.WriteLine($"[ShaedyMapChooser] Config loaded with {config.Maps.Count} default maps and {config.MapPools.Count} mode pools.");
+        Console.WriteLine("[ShaedyMapChooser] Config loaded with " + config.Maps.Count + " default maps and " + config.MapPools.Count + " mode pools.");
     }
 
     public override void Load(bool hotReload)
@@ -95,18 +77,16 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 
         RegisterListener<Listeners.OnMapStart>(mapName =>
         {
-            Console.WriteLine($"[ShaedyMapChooser] OnMapStart -> {mapName}. Resetting vote state.");
+            Console.WriteLine("[ShaedyMapChooser] OnMapStart -> " + mapName + ". Resetting vote state.");
             ResetVoteState();
         });
 
         AddTimer(30.0f, CheckEmptyAndRotate, TimerFlags.REPEAT);
 
         if (hotReload)
-        {
             ResetVoteState();
-        }
 
-        Console.WriteLine("[ShaedyMapChooser] v3.2.0 Loaded successfully.");
+        Console.WriteLine("[ShaedyMapChooser] v3.5.0 Loaded successfully.");
     }
 
     private void ResetVoteState()
@@ -121,6 +101,85 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         _playerVotes.Clear();
         _nextMap = null;
         _serverEmptySince = null;
+        StopNextmapBadgeTimer();
+        StopRtvBadgeTimer();
+    }
+
+    private void StartNextmapBadgeTimer()
+    {
+        StopNextmapBadgeTimer();
+        _nextmapBadgeTimer = AddTimer(5.0f, ShowNextmapBadge, TimerFlags.REPEAT);
+    }
+
+    private void StopNextmapBadgeTimer()
+    {
+        _nextmapBadgeTimer?.Kill();
+        _nextmapBadgeTimer = null;
+    }
+
+    private void ShowNextmapBadge()
+    {
+        if (_nextMap == null)
+        {
+            StopNextmapBadgeTimer();
+            return;
+        }
+
+        string mapName = GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value);
+
+        string html = "<html><body style='margin:0;padding:0;'><div style='text-align:center;font-family:Arial;'>";
+        html += "<div style='font-size:12px;color:#888;letter-spacing:2px;'>NEXT MAP</div>";
+        html += "<div style='font-size:22px;font-weight:bold;color:#4ade80;text-shadow:0 0 10px #4ade80;margin-top:2px;'>" + mapName + "</div>";
+        html += "</div></body></html>";
+
+        var players = Utilities.GetPlayers();
+        foreach (var p in players)
+        {
+            if (p != null && p.IsValid && !p.IsBot && p.TeamNum > (byte)CsTeam.Spectator)
+                HudManager.Show(p.SteamID, html, HudPriority.Background, 5);
+        }
+    }
+
+    private void StartRtvBadgeTimer()
+    {
+        StopRtvBadgeTimer();
+        _rtvBadgeTimer = AddTimer(1.0f, ShowRtvBadge, TimerFlags.REPEAT);
+    }
+
+    private void StopRtvBadgeTimer()
+    {
+        _rtvBadgeTimer?.Kill();
+        _rtvBadgeTimer = null;
+    }
+
+    private void ShowRtvBadge()
+    {
+        if (_rtvVoters.Count == 0 || _isVoteInProgress)
+        {
+            StopRtvBadgeTimer();
+            return;
+        }
+
+        int currentPlayers = GetRealPlayerCount();
+        if (currentPlayers <= 0) currentPlayers = 1;
+        int votesNeeded = Math.Max(1, (int)Math.Ceiling(currentPlayers * Config.RtvPercentage));
+        int current = _rtvVoters.Count;
+        int pct = votesNeeded > 0 ? Math.Max(0, Math.Min(100, (int)((float)current / votesNeeded * 100))) : 100;
+
+        string color = current >= votesNeeded ? "#4ade80" : "#ffaa00";
+
+        string html = "<html><body style='margin:0;padding:0;'><div style='text-align:center;font-family:Arial;'>";
+        html += "<div style='font-size:12px;color:#888;letter-spacing:2px;'>ROCK THE VOTE</div>";
+        html += "<div style='margin-top:4px;width:200px;height:6px;background:#333;border-radius:3px;margin-left:auto;margin-right:auto;'><div style='width:" + pct + "%;height:6px;background:" + color + ";border-radius:3px;'></div></div>";
+        html += "<div style='font-size:14px;color:#ccc;margin-top:2px;'>" + current + "/" + votesNeeded + " votes</div>";
+        html += "</div></body></html>";
+
+        var players = Utilities.GetPlayers();
+        foreach (var p in players)
+        {
+            if (p != null && p.IsValid && !p.IsBot && !_rtvVoters.Contains(p.UserId ?? -1))
+                HudManager.Show(p.SteamID, html, HudPriority.Background, 1);
+        }
     }
 
     [CommandHelper(whoCanExecute: CommandUsage.CLIENT_ONLY)]
@@ -130,11 +189,11 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 
         if (_nextMap != null)
         {
-            player.PrintToChat($"{_prefix} Next map: {ChatColors.Green}{GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value)}");
+            player.PrintToChat(_prefix + " Next map: " + ChatColors.Green + GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value));
         }
         else
         {
-            player.PrintToChat($"{_prefix} No next map set yet. Use {ChatColors.Green}!rtv{ChatColors.White} to start a vote.");
+            player.PrintToChat(_prefix + " No next map set yet. Use " + ChatColors.Green + "!rtv" + ChatColors.White + " to start a vote.");
         }
     }
 
@@ -144,19 +203,21 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         if (player != null && player.IsValid && !player.IsBot && !player.IsHLTV)
         {
             _serverEmptySince = null;
+
+            if (_nextMap != null)
+                StartNextmapBadgeTimer();
         }
         return HookResult.Continue;
     }
 
     private void CheckEmptyAndRotate()
     {
-        // Reset stuck state after timeout
         if (_mapChangeScheduled && _mapChangeScheduledAt.HasValue)
         {
             double stuckSeconds = (DateTime.UtcNow - _mapChangeScheduledAt.Value).TotalSeconds;
             if (stuckSeconds > MAP_CHANGE_TIMEOUT_SECONDS)
             {
-                Console.WriteLine($"[ShaedyMapChooser] WARNING: _mapChangeScheduled stuck for {stuckSeconds:F0}s. Force-resetting state!");
+                Console.WriteLine("[ShaedyMapChooser] WARNING: _mapChangeScheduled stuck for " + stuckSeconds.ToString("F0") + "s. Force-resetting state!");
                 ResetVoteState();
             }
         }
@@ -174,14 +235,14 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         if (_serverEmptySince == null)
         {
             _serverEmptySince = DateTime.UtcNow;
-            Console.WriteLine($"[ShaedyMapChooser] Server is now empty. Starting {Config.EmptyMapRotationCooldown}min timer...");
+            Console.WriteLine("[ShaedyMapChooser] Server is now empty. Starting " + Config.EmptyMapRotationCooldown + "min timer...");
         }
 
         double minutesEmpty = (DateTime.UtcNow - _serverEmptySince.Value).TotalMinutes;
 
         if (minutesEmpty >= Config.EmptyMapRotationCooldown)
         {
-            Console.WriteLine($"[ShaedyMapChooser] Server empty for {minutesEmpty:F1}min (threshold: {Config.EmptyMapRotationCooldown}min). Rotating to random map...");
+            Console.WriteLine("[ShaedyMapChooser] Server empty for " + minutesEmpty.ToString("F1") + "min (threshold: " + Config.EmptyMapRotationCooldown + "min). Rotating to random map...");
 
             var randomMap = GetRandomMapFromPool();
             if (randomMap.Key != null)
@@ -190,7 +251,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
                 _mapChangeScheduled = true;
                 _mapChangeScheduledAt = DateTime.UtcNow;
 
-                Console.WriteLine($"[ShaedyMapChooser] Changing to {randomMap.Key} in 5 seconds...");
+                Console.WriteLine("[ShaedyMapChooser] Changing to " + randomMap.Key + " in 5 seconds...");
 
                 AddTimer(5.0f, () =>
                 {
@@ -210,10 +271,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         {
             return Utilities.GetPlayers().Count(p => p != null && p.IsValid && !p.IsBot && !p.IsHLTV && p.Connected == PlayerConnectedState.PlayerConnected);
         }
-        catch
-        {
-            return 0;
-        }
+        catch { return 0; }
     }
 
     private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
@@ -245,8 +303,8 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 
                 if (roundsRemaining <= Config.VoteRoundsBeforeEnd && roundsRemaining > 0)
                 {
-                    Console.WriteLine($"[ShaedyMapChooser] Auto-vote triggered. Rounds remaining: {roundsRemaining}");
-                    Server.PrintToChatAll($"{_prefix} Match ends in {ChatColors.Yellow}{roundsRemaining}{ChatColors.White} rounds. Starting Map Vote...");
+                    Console.WriteLine("[ShaedyMapChooser] Auto-vote triggered. Rounds remaining: " + roundsRemaining);
+                    Server.PrintToChatAll(_prefix + " Match ends in " + ChatColors.Yellow + roundsRemaining + ChatColors.White + " rounds. Starting Map Vote...");
                     _autoVoteTriggered = true;
                     _rtvTriggered = false;
                     StartVote();
@@ -255,7 +313,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ShaedyMapChooser] Error in OnRoundStart: {ex.Message}");
+            Console.WriteLine("[ShaedyMapChooser] Error in OnRoundStart: " + ex.Message);
         }
         return HookResult.Continue;
     }
@@ -267,14 +325,14 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 
     private HookResult OnMatchEnd(EventCsWinPanelMatch @event, GameEventInfo info)
     {
-        Console.WriteLine($"[ShaedyMapChooser] Match ended. NextMap set: {_nextMap != null}, AutoVote: {_autoVoteTriggered}");
+        Console.WriteLine("[ShaedyMapChooser] Match ended. NextMap set: " + (_nextMap != null) + ", AutoVote: " + _autoVoteTriggered);
 
         if (_mapChangeScheduled) return HookResult.Continue;
 
         if (_nextMap != null)
         {
-            Server.PrintToChatAll($"{_prefix} Next map: {ChatColors.Green}{GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value)}");
-            Server.PrintToChatAll($"{_prefix} Changing map in 5 seconds...");
+            Server.PrintToChatAll(_prefix + " Next map: " + ChatColors.Green + GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value));
+            Server.PrintToChatAll(_prefix + " Changing map in 5 seconds...");
             _mapChangeScheduled = true;
             _mapChangeScheduledAt = DateTime.UtcNow;
             AddTimer(5.0f, ForceChangeMap);
@@ -303,23 +361,23 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
             }
             else
             {
-                player.PrintToChat($"{_prefix} Map change is already in progress!");
+                player.PrintToChat(_prefix + " Map change is already in progress!");
                 return;
             }
         }
         if (_isVoteInProgress)
         {
-            player.PrintToChat($"{_prefix} A vote is already in progress!");
+            player.PrintToChat(_prefix + " A vote is already in progress!");
             return;
         }
         if (_nextMap != null)
         {
-            player.PrintToChat($"{_prefix} Next map already set: {ChatColors.Green}{GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value)}");
+            player.PrintToChat(_prefix + " Next map already set: " + ChatColors.Green + GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value));
             return;
         }
         if (_rtvVoters.Contains(player.UserId.Value))
         {
-            player.PrintToChat($"{_prefix} You have already voted for RTV.");
+            player.PrintToChat(_prefix + " You have already voted for RTV.");
             return;
         }
 
@@ -328,11 +386,14 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         if (currentPlayers <= 0) currentPlayers = 1;
         int votesNeeded = Math.Max(1, (int)Math.Ceiling(currentPlayers * Config.RtvPercentage));
 
-        Server.PrintToChatAll($"{_prefix} {ChatColors.Green}{player.PlayerName}{ChatColors.White} wants to RTV. ({ChatColors.Yellow}{_rtvVoters.Count}/{votesNeeded}{ChatColors.White})");
+        Server.PrintToChatAll(_prefix + " " + ChatColors.Green + player.PlayerName + ChatColors.White + " wants to RTV. (" + ChatColors.Yellow + _rtvVoters.Count + "/" + votesNeeded + ChatColors.White + ")");
+
+        StartRtvBadgeTimer();
 
         if (_rtvVoters.Count >= votesNeeded)
         {
-            Server.PrintToChatAll($"{_prefix} RTV Vote passed! Starting map vote...");
+            Server.PrintToChatAll(_prefix + " RTV Vote passed! Starting map vote...");
+            StopRtvBadgeTimer();
             _rtvTriggered = true;
             _autoVoteTriggered = false;
             StartVote();
@@ -352,11 +413,10 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         _currentVotes.Clear();
         _playerVotes.Clear();
 
-        Console.WriteLine($"[ShaedyMapChooser] Starting vote. RTV: {_rtvTriggered}, Auto: {_autoVoteTriggered}");
+        Console.WriteLine("[ShaedyMapChooser] Starting vote. RTV: " + _rtvTriggered + ", Auto: " + _autoVoteTriggered);
 
         int currentPlayers = GetRealPlayerCount();
 
-        // Determine the active map pool based on current map prefix
         var activeMaps = GetActiveMapsForCurrentMode();
         var validMaps = activeMaps.Where(m => currentPlayers >= m.Value.MinPlayers && currentPlayers <= m.Value.MaxPlayers).ToList();
         if (!validMaps.Any()) validMaps = activeMaps.ToList();
@@ -364,19 +424,18 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         if (!validMaps.Any())
         {
             Console.WriteLine("[ShaedyMapChooser] No maps available for vote!");
-            Server.PrintToChatAll($"{_prefix} {ChatColors.Red}No maps available for voting!");
+            Server.PrintToChatAll(_prefix + " " + ChatColors.Red + "No maps available for voting!");
             _isVoteInProgress = false;
             return;
         }
 
-        // Weighted random selection for map pool
         var mapPool = validMaps.Select(map =>
         {
             double weight = map.Value.Weight <= 0 ? 0.01 : map.Value.Weight;
             return new { Map = map, Score = Math.Pow(Random.Shared.NextDouble(), 1.0 / weight) };
         }).OrderByDescending(x => x.Score).Take(5).Select(x => x.Map).ToList();
 
-        var voteMenu = new ChatMenu($"{ChatColors.Green}Vote for the next Map!");
+        var voteMenu = new ChatMenu(ChatColors.Green + "Vote for the next Map!");
 
         foreach (var mapEntry in mapPool)
         {
@@ -392,7 +451,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
 
                 if (_playerVotes.ContainsKey(voterId))
                 {
-                    voter.PrintToChat($"{_prefix} You already voted for {ChatColors.Green}{GetDisplayName(_playerVotes[voterId], LookupMapInfo(_playerVotes[voterId]))}{ChatColors.White}!");
+                    voter.PrintToChat(_prefix + " You already voted for " + ChatColors.Green + GetDisplayName(_playerVotes[voterId], LookupMapInfo(_playerVotes[voterId])) + ChatColors.White + "!");
                     return;
                 }
 
@@ -400,8 +459,8 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
                 if (!_currentVotes.ContainsKey(mapKey)) _currentVotes[mapKey] = 0;
                 _currentVotes[mapKey]++;
 
-                voter.PrintToChat($"{_prefix} You voted for {ChatColors.Green}{display}{ChatColors.White}.");
-                Server.PrintToChatAll($"{_prefix} {ChatColors.Green}{voter.PlayerName}{ChatColors.White} voted for {ChatColors.Yellow}{display}");
+                voter.PrintToChat(_prefix + " You voted for " + ChatColors.Green + display + ChatColors.White + ".");
+                Server.PrintToChatAll(_prefix + " " + ChatColors.Green + voter.PlayerName + ChatColors.White + " voted for " + ChatColors.Yellow + display);
             });
         }
 
@@ -414,12 +473,44 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ShaedyMapChooser] Error opening menu for {p.PlayerName}: {ex.Message}");
+                Console.WriteLine("[ShaedyMapChooser] Error opening menu for " + p.PlayerName + ": " + ex.Message);
             }
         }
 
-        Server.PrintToChatAll($"{_prefix} {ChatColors.Yellow}Map Vote started! {ChatColors.White}You have {ChatColors.Green}{Config.VoteDuration}{ChatColors.White} seconds to vote.");
+        Server.PrintToChatAll(_prefix + " " + ChatColors.Yellow + "Map Vote started! " + ChatColors.White + "You have " + ChatColors.Green + Config.VoteDuration + ChatColors.White + " seconds to vote.");
+
+        AddTimer(1.0f, ShowVoteProgress, TimerFlags.REPEAT);
         AddTimer(Config.VoteDuration, FinishVote);
+    }
+
+    private void ShowVoteProgress()
+    {
+        if (!_isVoteInProgress) return;
+
+        int totalVotes = _playerVotes.Count;
+        int currentPlayers = GetRealPlayerCount();
+
+        string voteLines = "";
+        var sortedVotes = _currentVotes.OrderByDescending(x => x.Value).ToList();
+        foreach (var vote in sortedVotes)
+        {
+            string mapName = GetDisplayName(vote.Key, LookupMapInfo(vote.Key));
+            int barLen = Math.Max(1, vote.Value);
+            string bar = new string('|', barLen);
+            voteLines += "<div style='font-size:14px;color:#ccc;'>" + bar + " " + mapName + " (" + vote.Value + ")</div>";
+        }
+
+        string html = "<html><body style='margin:0;padding:0;'><div style='text-align:center;font-family:Arial;'>";
+        html += "<div style='font-size:14px;color:#888;letter-spacing:2px;'>MAP VOTE - " + totalVotes + "/" + currentPlayers + " voted</div>";
+        html += "<div style='margin-top:6px;'>" + voteLines + "</div>";
+        html += "</div></body></html>";
+
+        var players = Utilities.GetPlayers();
+        foreach (var p in players)
+        {
+            if (p != null && p.IsValid && !p.IsBot)
+                HudManager.Show(p.SteamID, html, HudPriority.Background, 1);
+        }
     }
 
     private KeyValuePair<string, MapInfo> GetRandomMapFromPool()
@@ -441,12 +532,6 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         return validMaps.First();
     }
 
-    /// <summary>
-    /// Gets the appropriate map pool based on the current map's prefix.
-    /// If the current map starts with "surf_", uses the "surf" pool.
-    /// If it starts with "kz_", uses the "kz" pool.
-    /// Otherwise falls back to the default Maps pool.
-    /// </summary>
     private Dictionary<string, MapInfo> GetActiveMapsForCurrentMode()
     {
         string? currentMapName = Server.MapName;
@@ -456,7 +541,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
             {
                 if (currentMapName.StartsWith(pool.Key + "_", StringComparison.OrdinalIgnoreCase))
                 {
-                    Console.WriteLine($"[ShaedyMapChooser] Using '{pool.Key}' map pool ({pool.Value.Count} maps) based on current map '{currentMapName}'");
+                    Console.WriteLine("[ShaedyMapChooser] Using '" + pool.Key + "' map pool (" + pool.Value.Count + " maps) based on current map '" + currentMapName + "'");
                     return pool.Value;
                 }
             }
@@ -467,24 +552,19 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
     private string GetDisplayName(string key, MapInfo? info) =>
         info != null && !string.IsNullOrEmpty(info.DisplayName) ? info.DisplayName : key;
 
-    /// <summary>
-    /// Looks up a MapInfo by key across all pools and default Maps.
-    /// </summary>
     private MapInfo LookupMapInfo(string mapKey)
     {
-        if (Config.Maps.TryGetValue(mapKey, out var info))
-            return info;
+        if (Config.Maps.TryGetValue(mapKey, out var info)) return info;
         foreach (var pool in Config.MapPools.Values)
         {
-            if (pool.TryGetValue(mapKey, out var poolInfo))
-                return poolInfo;
+            if (pool.TryGetValue(mapKey, out var poolInfo)) return poolInfo;
         }
         return new MapInfo();
     }
 
     private void FinishVote()
     {
-        Console.WriteLine($"[ShaedyMapChooser] Vote finished. Votes received: {_currentVotes.Count}");
+        Console.WriteLine("[ShaedyMapChooser] Vote finished. Votes received: " + _currentVotes.Count);
 
         _isVoteInProgress = false;
 
@@ -493,12 +573,12 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
             if (Config.Maps.Count > 0)
             {
                 _nextMap = GetRandomMapFromPool();
-                Server.PrintToChatAll($"{_prefix} No votes received. Random map: {ChatColors.Green}{GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value)}");
-                Console.WriteLine($"[ShaedyMapChooser] No votes, random map selected: {_nextMap.Value.Key}");
+                Server.PrintToChatAll(_prefix + " No votes received. Random map: " + ChatColors.Green + GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value));
+                Console.WriteLine("[ShaedyMapChooser] No votes, random map selected: " + _nextMap.Value.Key);
             }
             else
             {
-                Server.PrintToChatAll($"{_prefix} {ChatColors.Red}No maps available!");
+                Server.PrintToChatAll(_prefix + " " + ChatColors.Red + "No maps available!");
                 Console.WriteLine("[ShaedyMapChooser] No maps in config!");
                 _rtvTriggered = false;
                 _autoVoteTriggered = false;
@@ -511,37 +591,35 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
             var mapInfo = LookupMapInfo(winner.Key);
             _nextMap = new KeyValuePair<string, MapInfo>(winner.Key, mapInfo);
 
-            Server.PrintToChatAll($"{_prefix} Vote Winner: {ChatColors.Green}{GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value)}{ChatColors.White} ({winner.Value} votes)");
-            Console.WriteLine($"[ShaedyMapChooser] Vote winner: {_nextMap.Value.Key} with {winner.Value} votes");
+            Server.PrintToChatAll(_prefix + " Vote Winner: " + ChatColors.Green + GetDisplayName(_nextMap.Value.Key, _nextMap.Value.Value) + ChatColors.White + " (" + winner.Value + " votes)");
+            Console.WriteLine("[ShaedyMapChooser] Vote winner: " + _nextMap.Value.Key + " with " + winner.Value + " votes");
         }
 
         _currentVotes.Clear();
         _playerVotes.Clear();
 
-        // RTV = Sofort wechseln, Auto-Vote = Am Match-Ende wechseln
         if (_rtvTriggered)
         {
-            Server.PrintToChatAll($"{_prefix} Changing map in {ChatColors.Yellow}5 seconds{ChatColors.White}...");
+            Server.PrintToChatAll(_prefix + " Changing map in " + ChatColors.Yellow + "5 seconds" + ChatColors.White + "...");
             _mapChangeScheduled = true;
             _mapChangeScheduledAt = DateTime.UtcNow;
             AddTimer(5.0f, ForceChangeMap);
         }
         else if (_autoVoteTriggered)
         {
-            Server.PrintToChatAll($"{_prefix} Map will change at the {ChatColors.Yellow}end of the match{ChatColors.White}.");
+            Server.PrintToChatAll(_prefix + " Map will change at the " + ChatColors.Yellow + "end of the match" + ChatColors.White + ".");
+            StartNextmapBadgeTimer();
         }
         else
         {
-            // Fallback: Sofort wechseln wenn unklar
             Console.WriteLine("[ShaedyMapChooser] Unknown vote trigger, changing immediately.");
-            Server.PrintToChatAll($"{_prefix} Changing map in {ChatColors.Yellow}5 seconds{ChatColors.White}...");
+            Server.PrintToChatAll(_prefix + " Changing map in " + ChatColors.Yellow + "5 seconds" + ChatColors.White + "...");
             _mapChangeScheduled = true;
             _mapChangeScheduledAt = DateTime.UtcNow;
             AddTimer(5.0f, ForceChangeMap);
         }
     }
 
-    // NEU: Robustere Map-Wechsel Funktion mit Retry-Logik
     private void ForceChangeMap()
     {
         if (_nextMap == null)
@@ -554,7 +632,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         var key = _nextMap.Value.Key;
         var info = _nextMap.Value.Value;
 
-        Console.WriteLine($"[ShaedyMapChooser] Executing map change to: {key}");
+        Console.WriteLine("[ShaedyMapChooser] Executing map change to: " + key);
 
         _nextMap = null;
         _autoVoteTriggered = false;
@@ -563,32 +641,33 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         _rtvVoters.Clear();
         _currentVotes.Clear();
         _playerVotes.Clear();
+        StopNextmapBadgeTimer();
+        StopRtvBadgeTimer();
         Server.NextFrame(() =>
         {
             try
             {
                 if (info != null && info.IsWorkshop && !string.IsNullOrEmpty(info.WorkshopId))
                 {
-                    Console.WriteLine($"[ShaedyMapChooser] Executing: host_workshop_map {info.WorkshopId}");
-                    Server.ExecuteCommand($"host_workshop_map {info.WorkshopId}");
+                    Console.WriteLine("[ShaedyMapChooser] Executing: host_workshop_map " + info.WorkshopId);
+                    Server.ExecuteCommand("host_workshop_map " + info.WorkshopId);
                 }
                 else
                 {
-                    Console.WriteLine($"[ShaedyMapChooser] Executing: changelevel {key}");
-                    Server.ExecuteCommand($"changelevel {key}");
+                    Console.WriteLine("[ShaedyMapChooser] Executing: changelevel " + key);
+                    Server.ExecuteCommand("changelevel " + key);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ShaedyMapChooser] Error during map change: {ex.Message}");
-                // Fallback: map command
+                Console.WriteLine("[ShaedyMapChooser] Error during map change: " + ex.Message);
                 try
                 {
-                    Server.ExecuteCommand($"map {key}");
+                    Server.ExecuteCommand("map " + key);
                 }
                 catch (Exception ex2)
                 {
-                    Console.WriteLine($"[ShaedyMapChooser] Fallback map command also failed: {ex2.Message}");
+                    Console.WriteLine("[ShaedyMapChooser] Fallback map command also failed: " + ex2.Message);
                 }
             }
         });
