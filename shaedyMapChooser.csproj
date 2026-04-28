@@ -10,8 +10,4 @@
     <PackageReference Include="CounterStrikeSharp.API" Version="*" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\shaedyHudManager\shaedyHudManager.csproj" />
-  </ItemGroup>
-
 </Project>

@@ -136,7 +136,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && p.TeamNum > (byte)CsTeam.Spectator)
-                HudManager.Show(p.SteamID, html, HudPriority.Background, 5);
+                HudManagerProxy.Show(p.SteamID, html, HudManagerProxy.Priority.Background, 5);
         }
     }
 
@@ -178,7 +178,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot && !_rtvVoters.Contains(p.UserId ?? -1))
-                HudManager.Show(p.SteamID, html, HudPriority.Background, 1);
+                HudManagerProxy.Show(p.SteamID, html, HudManagerProxy.Priority.Background, 1);
         }
     }
 
@@ -509,7 +509,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
         foreach (var p in players)
         {
             if (p != null && p.IsValid && !p.IsBot)
-                HudManager.Show(p.SteamID, html, HudPriority.Background, 1);
+                HudManagerProxy.Show(p.SteamID, html, HudManagerProxy.Priority.Background, 1);
         }
     }
 

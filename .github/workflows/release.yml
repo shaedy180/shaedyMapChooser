@@ -14,9 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout HUD Manager
-        run: git -c credential.helper= clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -37,9 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout HUD Manager
-        run: git -c credential.helper= clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -51,13 +45,10 @@ jobs:
       - name: Publish
         run: dotnet publish --configuration Release --no-restore --output ./publish
 
-      - name: Remove HUD Manager dependency
-        run: rm -f ./publish/shaedyHudManager.dll
-
       - name: Zip release
         run: |
           cd publish
-          zip -r ../${{ github.event.repository.name }}.zip .
+          zip ../${{ github.event.repository.name }}.zip ${{ github.event.repository.name }}.dll
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
