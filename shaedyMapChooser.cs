@@ -269,7 +269,7 @@ public class ShaedyMapChooser : BasePlugin, IPluginConfig<ShaedyConfig>
     {
         try
         {
-            return Utilities.GetPlayers().Count(p => p != null && p.IsValid && !p.IsBot && !p.IsHLTV && p.Connected == PlayerConnectedState.PlayerConnected);
+            return Utilities.GetPlayers().Count(p => p != null && p.IsValid && !p.IsBot && !p.IsHLTV);
         }
         catch { return 0; }
     }
