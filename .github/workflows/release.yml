@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout HUD Manager
-        run: git clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
+        run: git -c credential.helper= clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Checkout HUD Manager
-        run: git clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
+        run: git -c credential.helper= clone https://github.com/shaedy180/shaedyHudManager.git ${{ github.workspace }}/../shaedyHudManager
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
