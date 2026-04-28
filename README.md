@@ -11,6 +11,7 @@ A CounterStrikeSharp plugin that handles map voting, Rock the Vote, and automati
 - Weight-based random map selection
 - Automatic map rotation on empty server
 - Prevents the same map from appearing in consecutive votes
+- Uses shaedyHudManager for non-conflicting center-screen overlays
 
 ## Commands
 
@@ -18,6 +19,10 @@ A CounterStrikeSharp plugin that handles map voting, Rock the Vote, and automati
 |---------|-------------|
 | `!rtv` | Rock the Vote to start a map vote |
 | `!nextmap` | Shows what the next map will be |
+
+## Dependencies
+
+- [shaedyHudManager](https://github.com/shaedy180/shaedyHudManager) - Centralized HUD overlay manager (must be installed alongside this plugin)
 
 ## Installation
 
