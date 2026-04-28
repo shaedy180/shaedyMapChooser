@@ -51,6 +51,9 @@ jobs:
       - name: Publish
         run: dotnet publish --configuration Release --no-restore --output ./publish
 
+      - name: Remove HUD Manager dependency
+        run: rm -f ./publish/shaedyHudManager.dll
+
       - name: Zip release
         run: |
           cd publish
